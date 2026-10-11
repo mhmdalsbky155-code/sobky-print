@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOBKY Print - نظام إدارة وطباعة السلايدات</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body {
+    font-family: 'Tajawal', sans-serif;
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    color: white;
+    min-height: 100vh;
+    margin: 0;
+}
+.brand-font {
+    font-family: 'Outfit', sans-serif;
+}
+.glass {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+.glass-input {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: white;
+}
+.glass-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+}
+/* Ensure downloaded image has a background */
+.card-wrapper-for-export {
+    background-color: white;
+    padding: 0;
+    margin: 0;
+}
+</style>
+</head>
+<body class="flex flex-col min-h-screen">
+<header class="glass sticky top-0 z-40 border-b border-white/10">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+        <div class="flex items-center space-x-3 space-x-reverse">
+            <button id="sidebarToggle" class="text-white hover:bg-white/10 p-2.5 rounded-xl transition cursor-pointer" title="فتح قائمة تصفية الملفات المتكررة">
+                <i class="fa-solid fa-bars text-xl"></i>
+            </button>
+            <h1 class="brand-font text-2xl md:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                SOBKY Print
+            </h1>
+        </div>
+        <div class="flex items-center gap-3">
+            <label for="globalQrInput" class="text-xs bg-purple-500/20 border border-purple-400/30 px-3 py-1.5 rounded-full font-medium text-purple-300 hover:bg-purple-500/30 cursor-pointer transition flex items-center gap-1.5 shadow-sm">
+                <i class="fa-solid fa-qrcode"></i> تغيير الـ QR
+            </label>
+            <input type="file" id="globalQrInput" accept="image/*" class="hidden" onchange="updateGlobalQR(this)">
+            <div class="text-xs md:text-sm bg-blue-500/20 border border-blue-400/30 px-3 py-1.5 rounded-full font-medium text-blue-300">
+                إجمالي السجلات: <span id="totalRecordsBadge">0</span>
+            </div>
+        </div>
+    </div>
+</header>
+
+<aside id="sidebar" class="glass w-80 fixed inset-y-0 right-0 transform translate-x-full transition-transform duration-300 ease-in-out z-50 flex flex-col pt-16 border-l border-white/10 bg-slate-900/95">
+    <div class="p-6 border-b border-white/10 flex justify-between items-center">
+        <h2 class="text-lg font-bold text-blue-400 flex items-center gap-2">
+            <i class="fa-solid fa-filter-circle-xmark"></i> مصفاة الملفات
+        </h2>
+        <button id="closeSidebar" class="text-gray-400 hover:text-white p-1 cursor-pointer">
+            <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+    </div>
+    <div class="p-6 flex-1 overflow-y-auto space-y-4">
+        <p class="text-xs text-gray-300">ارفع مجموعة من ملفات الـ PDF لاكتشاف التكرارات وتصفيتها بذكاء.</p>
+        <div>
+            <label class="block text-sm font-semibold text-gray-300 mb-2">اختر ملفات الـ PDF:</label>
+            <input type="file" id="duplicateFileInput" multiple accept=".pdf" class="block w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-500/20 file:text-blue-300 hover:file:bg-blue-500/30 cursor-pointer">
+        </div>
+        <button id="processDuplicatesBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-4 rounded-xl transition shadow-lg flex items-center justify-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> فحص التكرارات
+        </button>
+        <div id="filterResults" class="mt-4 text-sm glass p-3 rounded-xl border border-white/10 hidden">
+            <p id="filterSummary" class="font-semibold text-gray-200 mb-2 text-xs"></p>
+            <ul id="uniqueFilesList" class="list-disc list-inside text-xs text-gray-300 space-y-1 max-h-48 overflow-y-auto pr-1"></ul>
+        </div>
+    </div>
+    <div class="p-4 border-t border-white/10 text-center text-xs text-gray-500">
+        SOBKY Print © 2026
+    </div>
+</aside>
+
+<main class="flex-1 max-w-5xl w-full mx-auto p-4 md:p-8 space-y-8">
+    <div class="glass rounded-3xl p-6 md:p-8 relative overflow-hidden">
+        <div class="text-center mb-6">
+            <h2 class="brand-font text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500 mb-1">حاسبة الطباعة الذكية</h2>
+            <p class="text-gray-400 text-sm">اختر الملفات، حدد السلايدات، واحسب التكلفة بدقة</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div>
+                <label class="block text-sm text-gray-300 mb-2">عدد السلايدات في الورقة</label>
+                <select id="slidesPerPage" class="glass-input w-full rounded-xl p-3 cursor-pointer" onchange="calculate()">
+                    <option value="2" class="text-black">2 سلايد</option>
+                    <option value="4" class="text-black">4 سلايد</option>
+                    <option value="6" class="text-black">6 سلايد</option>
+                    <option value="8" class="text-black">8 سلايد</option>
+                    <option value="10" class="text-black">10 سلايد</option>
+                    <option value="12" class="text-black">12 سلايد</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm text-gray-300 mb-2">سعر الورقة (جنيه)</label>
+                <input type="number" id="pricePerPage" value="1" step="0.25" min="0" class="glass-input w-full rounded-xl p-3 text-center" oninput="calculate()">
+            </div>
+        </div>
+        <div class="border-2 border-dashed border-gray-500 rounded-2xl p-6 text-center mb-6 hover:border-blue-400 transition-colors cursor-pointer" id="dropZone" onclick="document.getElementById('fileInput').click()">
+            <p class="text-gray-300 mb-1"><i class="fa-solid fa-cloud-arrow-up text-2xl mb-2 text-blue-400 block"></i> اضغط هنا لاختيار ملفات PDF متعددة</p>
+            <p class="text-xs text-gray-500">ملاحظة: يمكنك الضغط هنا لاختيار جميع الملفات معاً، أو إضافتها واحداً تلو الآخر</p>
+            <input type="file" id="fileInput" accept="application/pdf, .pdf" multiple="multiple" class="hidden" onchange="handleFiles(this.files)">
+        </div>
+        <div id="fileList" class="space-y-3 mb-6 max-h-48 overflow-y-auto pr-2"></div>
+        <div class="glass rounded-2xl p-6 text-center">
+            <div class="flex justify-between items-center mb-3 border-b border-white/10 pb-3">
+                <span class="text-sm text-gray-300">إجمالي السلايدات:</span>
+                <span id="totalSlides" class="text-xl font-bold text-blue-400">0</span>
+            </div>
+            <div class="flex justify-between items-center mb-3 border-b border-white/10 pb-3">
+                <span class="text-sm text-gray-300">ورق الطباعة المطلوب:</span>
+                <span id="totalPages" class="text-xl font-bold text-purple-400">0</span>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="text-base font-bold">التكلفة الإجمالية:</span>
+                <span class="text-2xl font-bold text-green-400"><span id="totalPrice">0</span> ج.م</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="glass rounded-3xl p-6 md:p-8">
+        <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-circle-plus text-blue-400"></i> حفظ عملية الطباعة في السجل
+        </h3>
+        <form id="recordForm" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            <div>
+                <label class="block text-xs font-semibold text-gray-300 mb-1">اسم الشخص / العميل</label>
+                <input type="text" id="personName" required placeholder="أدخل اسم العميل" class="glass-input w-full rounded-xl px-4 py-2.5 text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-300 mb-1">رقم الاستلام (يدوي)</label>
+                <input type="text" id="receiptNumberInput" required placeholder="أدخل رقم الاستلام" class="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-center">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-300 mb-1">السعر النهائي (ج.م)</label>
+                <input type="number" step="0.01" id="recordPrice" required placeholder="0.00" class="glass-input w-full rounded-xl px-4 py-2.5 text-sm text-center">
+            </div>
+            <div class="md:col-span-3">
+                <button type="submit" class="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-medium py-2.5 px-4 rounded-xl text-sm transition shadow-lg flex items-center justify-center gap-2 cursor-pointer">
+                    <i class="fa-solid fa-bookmark"></i> حفظ الكارت
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
+        <h3 class="text-xl font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-id-card text-blue-400"></i> سجلات الكروت
+        </h3>
+        <div class="w-full sm:w-72">
+            <input type="text" id="searchInput" placeholder="بحث باسم الشخص..." class="glass-input w-full text-sm rounded-xl px-4 py-2.5">
+        </div>
+    </div>
+    <div id="cardsGrid" class="grid grid-cols-1 gap-6"></div>
+    <div id="emptyState" class="text-center py-16 hidden glass rounded-3xl">
+        <i class="fa-solid fa-folder-open text-4xl text-gray-500 mb-3"></i>
+        <p class="text-gray-400 text-sm">لا توجد سجلات طباعة حتى الآن. ابدأ بحساب وحفظ كارت جديد.</p>
+    </div>
+</main>
+
+<div id="customModal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity opacity-0">
+    <div class="glass bg-slate-900 border border-white/20 p-6 rounded-2xl shadow-2xl max-w-sm w-full mx-4 transform scale-95 transition-transform" id="modalContent">
+        <div class="flex items-center gap-3 mb-4 text-blue-400" id="modalIconContainer">
+            <i class="fa-solid fa-circle-info text-2xl"></i>
+            <h3 class="text-lg font-bold text-white" id="modalTitle">تنبيه</h3>
+        </div>
+        <p id="modalMessage" class="text-gray-300 text-sm whitespace-pre-line mb-6"></p>
+        <div class="flex justify-end">
+            <button onclick="closeModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl text-sm font-medium transition cursor-pointer">حسناً</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const customModal = document.getElementById('customModal');
+const modalMessage = document.getElementById('modalMessage');
+const modalContent = document.getElementById('modalContent');
+
+function showModal(message, title = 'تنبيه', isError = false) {
+    document.getElementById('modalTitle').innerText = title;
+    modalMessage.innerText = message;
+    
+    if (isError) {
+        document.getElementById('modalTitle').classList.replace('text-white', 'text-red-400');
+        document.getElementById('modalIconContainer').classList.replace('text-blue-400', 'text-red-400');
+    } else {
+        document.getElementById('modalTitle').classList.replace('text-red-400', 'text-white');
+        document.getElementById('modalIconContainer').classList.replace('text-red-400', 'text-blue-400');
+    }
+
+    customModal.classList.remove('hidden');
+    customModal.classList.add('flex');
+    void customModal.offsetWidth; 
+    customModal.classList.remove('opacity-0');
+    modalContent.classList.remove('scale-95');
+    modalContent.classList.add('scale-100');
+}
+
+window.closeModal = function() {
+    customModal.classList.add('opacity-0');
+    modalContent.classList.remove('scale-100');
+    modalContent.classList.add('scale-95');
+    setTimeout(() => {
+        customModal.classList.add('hidden');
+        customModal.classList.remove('flex');
+    }, 300);
+}
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+let filesData = [];
+let records = JSON.parse(localStorage.getItem('sobky_print_records')) || [];
+let currentCustomQR = localStorage.getItem('sobky_custom_qr') || 'https://placehold.co/150x150/1e293b/3b82f6?text=QR';
+const sidebar = document.getElementById('sidebar');
+const sidebarToggle = document.getElementById('sidebarToggle');
+const closeSidebar = document.getElementById('closeSidebar');
+const dropZone = document.getElementById('dropZone');
+const recordForm = document.getElementById('recordForm');
+const cardsGrid = document.getElementById('cardsGrid');
+const emptyState = document.getElementById('emptyState');
+const totalRecordsBadge = document.getElementById('totalRecordsBadge');
+const searchInput = document.getElementById('searchInput');
+
+sidebarToggle.addEventListener('click', () => sidebar.classList.remove('translate-x-full'));
+closeSidebar.addEventListener('click', () => sidebar.classList.add('translate-x-full'));
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('border-blue-400'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-blue-400'));
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('border-blue-400');
+    handleFiles(e.dataTransfer.files);
+});
+
+window.updateGlobalQR = function(input) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            currentCustomQR = e.target.result;
+            try {
+                localStorage.setItem('sobky_custom_qr', currentCustomQR);
+            } catch (err) {
+                showModal('الصورة كبيرة جداً، يرجى اختيار صورة أصغر حجماً.', 'خطأ في الحجم', true);
+                return;
+            }
+            renderCards(records);
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+};
+
+document.getElementById('processDuplicatesBtn').addEventListener('click', () => {
+    const fileInput = document.getElementById('duplicateFileInput');
+    const files = fileInput.files;
+    const filterResults = document.getElementById('filterResults');
+    const filterSummary = document.getElementById('filterSummary');
+    const uniqueFilesList = document.getElementById('uniqueFilesList');
+    if (files.length === 0) {
+        showModal('الرجاء اختيار ملفات PDF أولاً.', 'تنبيه');
+        return;
+    }
+    const uniqueMap = new Map();
+    let duplicateCount = 0;
+    for (let file of files) {
+        const key = `${file.name}_${file.size}`;
+        if (!uniqueMap.has(key)) {
+            uniqueMap.set(key, file);
+        } else {
+            duplicateCount++;
+        }
+    }
+    filterResults.classList.remove('hidden');
+    filterSummary.textContent = `تم فحص ${files.length} ملف. تم استبعاد ${duplicateCount} ملف متكرر وبقي ${uniqueMap.size} ملف فريد.`;
+    uniqueFilesList.innerHTML = '';
+    uniqueMap.forEach((file) => {
+        const li = document.createElement('li');
+        li.textContent = file.name;
+        uniqueFilesList.appendChild(li);
+    });
+});
+
+async function handleFiles(files) {
+    if (!files || files.length === 0) return;
+    
+    const oldSlidesText = document.getElementById('totalSlides').innerHTML;
+    document.getElementById('totalSlides').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    
+    const promises = [];
+    for (let file of files) {
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) continue;
+        
+        let p = new Promise((resolve) => {
+            const fileReader = new FileReader();
+            fileReader.onload = async function() {
+                try {
+                    const typedarray = new Uint8Array(this.result);
+                    const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                    const numPages = pdf.numPages;
+                    const fileId = Date.now() + Math.random();
+                    filesData.push({ id: fileId, name: file.name, pages: numPages, rawFile: file });
+                    resolve();
+                } catch (error) {
+                    showModal("حدث خطأ أثناء قراءة الملف: " + file.name, 'خطأ', true);
+                    resolve();
+                }
+            };
+            fileReader.readAsArrayBuffer(file);
+        });
+        promises.push(p);
+    }
+    
+    await Promise.all(promises);
+    document.getElementById('fileInput').value = ''; 
+    updateUI();
+}
+
+window.removeFile = function(id) {
+    filesData = filesData.filter(f => f.id !== id);
+    updateUI();
+}
+
+function updateUI() {
+    const list = document.getElementById('fileList');
+    list.innerHTML = '';
+    filesData.forEach(file => {
+        list.innerHTML += `<div class="flex justify-between items-center bg-gray-800/80 rounded-xl p-3 text-sm border border-white/10"> <span class="truncate w-3/4 text-gray-200">${file.name}</span> <div class="flex items-center gap-3"> <span class="text-blue-400 font-bold">${file.pages} سلايد</span> <button onclick="removeFile(${file.id})" class="text-red-400 hover:text-red-300 font-bold px-1 cursor-pointer">✕</button> </div> </div>`;
+    });
+    calculate();
+}
+
+window.calculate = function() {
+    const perPage = parseInt(document.getElementById('slidesPerPage').value);
+    const price = parseFloat(document.getElementById('pricePerPage').value) || 0;
+    
+    let totalSlides = 0;
+    let sheetsNeeded = 0;
+    
+    filesData.forEach(file => {
+        totalSlides += file.pages;
+        sheetsNeeded += Math.ceil(file.pages / perPage);
+    });
+    
+    const totalCost = sheetsNeeded * price;
+    
+    document.getElementById('totalSlides').innerText = totalSlides;
+    document.getElementById('totalPages').innerText = sheetsNeeded;
+    document.getElementById('totalPrice').innerText = totalCost.toFixed(2);
+    
+    const recordPriceInput = document.getElementById('recordPrice');
+    if (recordPriceInput && !recordPriceInput.dataset.manual) {
+        recordPriceInput.value = totalCost.toFixed(2);
+    }
+}
+
+document.getElementById('recordPrice').addEventListener('input', function() {
+    this.dataset.manual = "true";
+});
+
+recordForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    let storedFiles = filesData.map(f => ({ name: f.name }));
+    const fileCountVal = filesData.length;
+    const customReceiptNum = document.getElementById('receiptNumberInput').value.trim();
+    const newRecord = {
+        id: Date.now(),
+        files: storedFiles,
+        fileCount: fileCountVal,
+        name: document.getElementById('personName').value,
+        price: parseFloat(document.getElementById('recordPrice').value).toFixed(2),
+        receipt: customReceiptNum,
+        delivered: false,
+        date: new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    };
+    records.unshift(newRecord);
+    saveAndRender();
+    recordForm.reset();
+    document.getElementById('recordPrice').dataset.manual = "";
+});
+
+function saveAndRender() {
+    localStorage.setItem('sobky_print_records', JSON.stringify(records));
+    renderCards(records);
+    totalRecordsBadge.textContent = records.length;
+}
+
+window.toggleDelivery = function(id) {
+    records = records.filter(rec => rec.id !== id);
+    saveAndRender();
+}
+
+window.openPersonFiles = function(recordId) {
+    const rec = records.find(r => r.id === recordId);
+    if (!rec || !rec.files || rec.files.length === 0) {
+        showModal('لا توجد ملفات محفوظة لهذا الشخص.', 'معلومات');
+        return;
+    }
+    let fileNamesText = rec.files.map(f => f.name).join('\n• ');
+    showModal(`• ${fileNamesText}`, `ملفات: ${rec.name}`);
+}
+
+async function getCardCanvas(cardId) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const cardElement = document.getElementById(`card-${cardId}`);
+            if (!cardElement) return reject("Card not found");
+            
+            const clone = cardElement.cloneNode(true);
+            const actionsDiv = clone.querySelector('.card-actions-row');
+            if (actionsDiv) actionsDiv.remove(); 
+            
+            clone.style.position = 'absolute';
+            clone.style.top = '-9999px';
+            clone.style.left = '-9999px';
+            clone.style.width = '650px'; 
+            clone.style.backgroundColor = '#ffffff';
+            clone.classList.add('card-wrapper-for-export');
+            
+            document.body.appendChild(clone);
+            
+            setTimeout(async () => {
+                const canvas = await html2canvas(clone, { 
+                    scale: 2, 
+                    useCORS: true, 
+                    backgroundColor: '#ffffff',
+                    logging: false
+                });
+                document.body.removeChild(clone);
+                resolve(canvas);
+            }, 100);
+            
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
+
+function triggerDownload(dataUrl, filename) {
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+window.downloadCard = async function(cardId) {
+    try {
+        const btn = event.currentTarget;
+        const originalContent = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جاري...';
+        btn.disabled = true;
+
+        const canvas = await getCardCanvas(cardId);
+        const dataUrl = canvas.toDataURL('image/png');
+        triggerDownload(dataUrl, `Sobky_Print_Receipt_${cardId}.png`);
+        
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+    } catch (error) {
+        showModal('حدث خطأ أثناء تنزيل الكارت.', 'خطأ', true);
+        console.error(error);
+    }
+};
+
+window.shareCard = async function(cardId) {
+    try {
+        const btn = event.currentTarget;
+        const originalContent = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جاري...';
+        btn.disabled = true;
+
+        const canvas = await getCardCanvas(cardId);
+        
+        canvas.toBlob(async function(blob) {
+            const file = new File([blob], `Sobky_Print_Receipt_${cardId}.png`, { type: 'image/png' });
+            
+            if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({
+                        title: 'كارت طباعة - SOBKY Print',
+                        files: [file],
+                        text: 'تفاصيل فاتورة الطباعة'
+                    });
+                } catch (err) {}
+            } else {
+                showModal('تطبيقك الحالي لا يدعم المشاركة المباشرة. سيتم تنزيل الصورة لتقوم بمشاركتها من المعرض.', 'تنبيه');
+                const dataUrl = canvas.toDataURL('image/png');
+                triggerDownload(dataUrl, `Sobky_Print_Receipt_${cardId}.png`);
+            }
+            
+            btn.innerHTML = originalContent;
+            btn.disabled = false;
+        }, 'image/png');
+    } catch (error) {
+        showModal('حدث خطأ أثناء المشاركة.', 'خطأ', true);
+        console.error(error);
+        if(event && event.currentTarget) {
+            event.currentTarget.innerHTML = '<i class="fa-solid fa-share-nodes"></i> مشاركة';
+            event.currentTarget.disabled = false;
+        }
+    }
+};
+
+window.printCardDirect = function(cardId) {
+    const cardElement = document.getElementById(`card-${cardId}`);
+    if (!cardElement) return;
+
+    const clone = cardElement.cloneNode(true);
+    const actionsDiv = clone.querySelector('.card-actions-row');
+    if (actionsDiv) actionsDiv.remove();
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '-9999px';
+    iframe.style.bottom = '-9999px';
+    document.body.appendChild(iframe);
+
+    const iframeDoc = iframe.contentWindow.document;
+    iframeDoc.open();
+    iframeDoc.write(`
+        <html dir="rtl">
+        <head>
+            <title>طباعة الفاتورة</title>
+            <script src="https://cdn.tailwindcss.com"><\/script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+            <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap" rel="stylesheet">
+            <style>
+                body { font-family: 'Tajawal', sans-serif; background: white; padding: 20px; margin: 0; }
+                .printable-card { width: 100%; max-width: 400px; margin: 0 auto; background: white !important; }
+                @media print {
+                    @page { margin: 0; }
+                    body { padding: 15px; }
+                }
+            </style>
+        </head>
+        <body>
+            ${clone.outerHTML}
+            <script>
+                window.onload = function() {
+                    setTimeout(function() {
+                        window.print();
+                    }, 800);
+                };
+            <\/script>
+        </body>
+        </html>
+    `);
+    iframeDoc.close();
+    
+    setTimeout(() => {
+        document.body.removeChild(iframe);
+    }, 10000);
+};
+
+function renderCards(dataToRender) {
+    cardsGrid.innerHTML = '';
+    if (dataToRender.length === 0) {
+        emptyState.classList.remove('hidden');
+        return;
+    } else {
+        emptyState.classList.add('hidden');
+    }
+    
+    dataToRender.forEach(rec => {
+        const card = document.createElement('div');
+        
+        const statusBorderClass = rec.delivered
+            ? 'border-gray-200 bg-gray-50 opacity-75 grayscale'
+            : 'border-blue-400 shadow-[0_4px_20px_rgba(59,130,246,0.15)] bg-white ring-1 ring-blue-100';
+            
+        card.className = `printable-card rounded-3xl border ${statusBorderClass} p-6 flex flex-col justify-between transition-all relative overflow-hidden`;
+        card.id = `card-${rec.id}`;
+        
+        let filesListStr = rec.files && rec.files.length > 0 ? rec.files.map(f => f.name).join(', ') : 'ملفات مباشرة';
+        
+        card.innerHTML = `
+        <div> 
+            <div class="flex justify-between items-start mb-3"> 
+                <span class="text-xs text-gray-500 font-medium">${rec.date}</span> 
+                <span class="px-3 py-1 rounded-full text-xs font-semibold ${rec.delivered ? 'bg-gray-200 text-gray-600 border border-gray-300' : 'bg-blue-50 text-blue-700 border border-blue-200 animate-pulse'}"> 
+                    ${rec.delivered ? 'تم التسليم' : 'قيد التجهيز'} 
+                </span> 
+            </div> 
+            <h4 class="text-xl font-bold text-gray-900 mb-2 flex items-center gap-2"> 
+                <i class="fa-solid fa-user text-blue-600 text-sm"></i> ${rec.name} 
+            </h4> 
+            <div onclick="openPersonFiles(${rec.id})" class="text-xs text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl mb-4 truncate cursor-pointer hover:bg-blue-100 transition" title="اضغط لعرض ملفات هذا الشخص"> 
+                <i class="fa-solid fa-folder-open ml-1.5"></i> عدد الملفات (${rec.fileCount || 0}): ${filesListStr} 
+            </div> 
+            <div class="grid grid-cols-3 gap-2 bg-gray-50 border border-gray-200 p-3.5 rounded-2xl mb-4 text-center"> 
+                <div> 
+                    <span class="block text-[10px] text-gray-500 uppercase tracking-wider font-semibold">السعر</span> 
+                    <span class="text-sm font-bold text-green-600">${rec.price} ج.م</span> 
+                </div> 
+                <div> 
+                    <span class="block text-[10px] text-gray-500 uppercase tracking-wider font-semibold">عدد الملفات</span> 
+                    <span class="text-sm font-bold text-blue-600">${rec.fileCount || 0}</span> 
+                </div> 
+                <div> 
+                    <span class="block text-[10px] text-gray-500 uppercase tracking-wider font-semibold">رقم الاستلام</span> 
+                    <span class="text-xs font-bold text-purple-700 truncate">${rec.receipt || '-'}</span> 
+                </div> 
+            </div> 
+            <div class="flex justify-center mb-4"> 
+                <div class="bg-white p-2 rounded-xl shadow-sm inline-block border border-gray-200"> 
+                    <img src="${currentCustomQR}" alt="QR Code" class="w-20 h-20 object-contain" onerror="this.src='https://placehold.co/150x150/1e293b/3b82f6?text=QR'"> 
+                </div> 
+            </div> 
+        </div> 
+        <div class="flex flex-wrap items-center justify-between pt-4 border-t border-gray-200 no-print gap-2 card-actions-row"> 
+            <div class="flex flex-wrap gap-2">
+                <button type="button" onclick="printCardDirect(${rec.id})" class="bg-slate-800 hover:bg-slate-900 text-white text-xs font-medium px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-md"> 
+                    <i class="fa-solid fa-print"></i> طباعة مباشر 
+                </button>
+                <button type="button" onclick="shareCard(${rec.id})" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-md"> 
+                    <i class="fa-solid fa-share-nodes"></i> مشاركة 
+                </button> 
+                <button type="button" onclick="downloadCard(${rec.id})" class="bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-md"> 
+                    <i class="fa-solid fa-download"></i> تنزيل 
+                </button>
+            </div>
+            <div class="flex items-center gap-2 mt-2 w-full sm:w-auto sm:mt-0"> 
+                <button type="button" onclick="toggleDelivery(${rec.id})" class="w-full text-xs font-medium px-3.5 py-2 rounded-xl transition flex items-center justify-center gap-1.5 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 cursor-pointer" title="اضغط لإخفاء السجل عند التسليم"> 
+                    <i class="fa-solid fa-check-circle"></i> تم التسليم 
+                </button> 
+            </div> 
+        </div>`;
+        cardsGrid.appendChild(card);
+    });
+}
+
+searchInput.addEventListener('input', (e) => {
+    const query = e.target.value.trim().toLowerCase();
+    const filtered = records.filter(rec => rec.name.toLowerCase().includes(query));
+    renderCards(filtered);
+});
+
+renderCards(records);
+totalRecordsBadge.textContent = records.length;
+calculate();
+</script>
+</body>
+</html>
